@@ -23,21 +23,28 @@ from preprocessing import FileLoader
 from shared_bin_matching import SharedBinMatching as Aligner
 from ground_truth import GroundTruth
 
-def load_or_create_clustering(filename, input_dir, transformation_file, hp):
+def load_or_create_clustering(filename, input_dir, transformation_file, hp,
+                              parallel=True, mh_biggest=True, do_clustering=True, verbose=True):
     try:
         with gzip.GzipFile(filename, 'rb') as f:
             combined_list = cPickle.load(f)
             print "Loaded from %s" % filename
             return combined_list
-    except (IOError, EOFError):
+    except (TypeError, IOError, EOFError):
         loader = FileLoader()
-        data_list = loader.load_model_input(input_dir, synthetic=True)
-        aligner = Aligner(data_list, transformation_file, hp, verbose=False, parallel=False)
-        clustering_results = aligner._first_stage_clustering()
+        corr_rt_window = hp.within_file_rt_tol
+        data_list = loader.load_model_input(input_dir, corr_rt_window)
+        if do_clustering:
+            aligner = Aligner(data_list, transformation_file, hp, verbose=verbose,
+                              parallel=parallel, mh_biggest=mh_biggest)
+            clustering_results = aligner._first_stage_clustering()
+        else:
+            clustering_results = [None] * len(data_list)
         combined_list = zip(data_list, clustering_results)
-        with gzip.GzipFile(filename, 'wb') as f:
-            cPickle.dump(combined_list, f, protocol=cPickle.HIGHEST_PROTOCOL)
-        print "Saved to %s" % filename
+        if filename is not None:
+            with gzip.GzipFile(filename, 'wb') as f:
+                cPickle.dump(combined_list, f, protocol=cPickle.HIGHEST_PROTOCOL)
+            print "Saved to %s" % filename
         return combined_list
 
 def train(selected_data, param_list, hp, match_mode, evaluation_method, transformation_file, gt_file, q=2):
@@ -106,24 +113,30 @@ def train_test_single(match_mode, training_data, testing_data, i, param_list, hp
     training_df, best_training_row = train(training_data, param_list, hp, match_mode, evaluation_method, transformation_file, gt_file, q=q)
     print "Best row is\n%s" % best_training_row
 
-    print "Testing on %s" % [x[0].filename for x in testing_data]
-    match_res = test(testing_data, best_training_row, hp, match_mode, evaluation_method, transformation_file, gt_file, q=q)
-    output = (match_mode,) + match_res
-    if len(output) == 10:
-        print "match_mode=%d, mass_tol=%d, rt_tol=%d, tp=%d, fp=%d, fn=%d, prec=%.3f, rec=%.3f, f1=%.3f, th_prob=%.3f" % output
+    if testing_data is not None:
+        print "Testing on %s" % [x[0].filename for x in testing_data]
+        match_res = test(testing_data, best_training_row, hp, match_mode, evaluation_method, transformation_file, gt_file, q=q)
+        output = (match_mode,) + match_res
+        if len(output) == 10:
+            print "match_mode=%d, mass_tol=%d, rt_tol=%d, tp=%d, fp=%d, fn=%d, prec=%.3f, rec=%.3f, f1=%.3f, th_prob=%.3f" % output
+        else:
+            print "match_mode=%d, mass_tol=%d, rt_tol=%d, grouping_tol=%d, matching_alpha=%.3f, tp=%d, fp=%d, fn=%d, prec=%.3f, rec=%.3f, f1=%.3f, th_prob=%.3f" % output
     else:
-        print "match_mode=%d, mass_tol=%d, rt_tol=%d, grouping_tol=%d, matching_alpha=%.3f, tp=%d, fp=%d, fn=%d, prec=%.3f, rec=%.3f, f1=%.3f, th_prob=%.3f" % output
+        match_res = None
 
     item = (training_data, training_df, best_training_row, match_res)
     return item
 
 def train_test(match_mode, training_list, testing_list, param_list, hp, evaluation_method, transformation_file, gt_file, q=2):
-    assert len(training_list) == len(testing_list)
+    # assert len(training_list) == len(testing_list)
     n_iter = len(training_list)
     exp_results = []
     for i in range(n_iter):
         training_data = training_list[i]
-        testing_data = testing_list[i]
+        if testing_list is not None:
+            testing_data = testing_list[i]
+        else:
+            testing_data = None
         item = train_test_single(match_mode, training_data, testing_data, i, param_list, hp, evaluation_method, transformation_file, gt_file, q=q)
         exp_results.append(item)
         print
@@ -136,13 +149,14 @@ def run_experiment_single(match_mode, training_list, testing_list, i, param_list
             item = cPickle.load(f)
             print "Loaded from %s" % filename
             return item
-    except (IOError, EOFError):
+    except (TypeError, IOError, EOFError):
         training_data = training_list[i]
         testing_data = testing_list[i]
         item = train_test_single(match_mode, training_data, testing_data, i, param_list, hp, evaluation_method, transformation_file, gt_file)
-        with gzip.GzipFile(filename, 'wb') as f:
-            cPickle.dump(item, f, protocol=cPickle.HIGHEST_PROTOCOL)
-        print "Saved to %s" % filename
+        if filename is not None:
+            with gzip.GzipFile(filename, 'wb') as f:
+                cPickle.dump(item, f, protocol=cPickle.HIGHEST_PROTOCOL)
+            print "Saved to %s" % filename
     return item
 
 def run_experiment(match_mode, training_list, testing_list, param_list, filename, hp, evaluation_method, transformation_file, gt_file, q=2):
@@ -151,11 +165,12 @@ def run_experiment(match_mode, training_list, testing_list, param_list, filename
             exp_results = cPickle.load(f)
             print "Loaded from %s" % filename
             return exp_results
-    except (IOError, EOFError):
+    except (TypeError, IOError, EOFError):
         exp_results = train_test(match_mode, training_list, testing_list, param_list, hp, evaluation_method, transformation_file, gt_file, q=q)
-        with gzip.GzipFile(filename, 'wb') as f:
-            cPickle.dump(exp_results, f, protocol=cPickle.HIGHEST_PROTOCOL)
-        print "Saved to %s" % filename
+        if filename is not None:
+            with gzip.GzipFile(filename, 'wb') as f:
+                cPickle.dump(exp_results, f, protocol=cPickle.HIGHEST_PROTOCOL)
+            print "Saved to %s" % filename
     return exp_results
 
 def load_or_create_filelist(filename, combined_list, n_iter, n_files):
@@ -166,15 +181,16 @@ def load_or_create_filelist(filename, combined_list, n_iter, n_files):
             for item in item_list:
                 print "%s" % [x[0].filename for x in item]
             return item_list
-    except (IOError, EOFError):
+    except (TypeError, IOError, EOFError):
         item_list = []
         for i in range(n_iter):
             item = random.sample(combined_list, n_files)
             print "%s" % [x[0].filename for x in item]
             item_list.append(item)
-        with gzip.GzipFile(filename, 'wb') as f:
-            cPickle.dump(item_list, f, protocol=cPickle.HIGHEST_PROTOCOL)
-        print "Saved to %s" % filename
+        if filename is not None:
+            with gzip.GzipFile(filename, 'wb') as f:
+                cPickle.dump(item_list, f, protocol=cPickle.HIGHEST_PROTOCOL)
+            print "Saved to %s" % filename
         return item_list
 
 def load_results(path, n_iter):

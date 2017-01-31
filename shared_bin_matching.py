@@ -29,7 +29,7 @@ AlignmentResults = namedtuple('AlignmentResults', ['peakset', 'prob'])
 class SharedBinMatching:
 
     def __init__(self, data_list, transformation_file, hyperpars,
-                 synthetic=True, limit_n=-1, verbose=True, seed=1234567890, parallel=True, mh_biggest=True, use_vb=False):
+                 synthetic=True, limit_n=-1, verbose=True, seed=1234567890, parallel=True, mh_biggest=True):
 
         self.verbose = verbose
         self.data_list = data_list
@@ -44,7 +44,6 @@ class SharedBinMatching:
         self.transformation_file = transformation_file
         self.seed = seed
         self.mh_biggest = mh_biggest
-        self.use_vb = use_vb
 
         if parallel:
             self.num_cores = multiprocessing.cpu_count()
@@ -93,7 +92,7 @@ class SharedBinMatching:
 
                 # initialise some attributes during runtime -- because we don't want to change the object
                 for cluster in file_clusters:
-                    cluster.members = []
+                    cluster.best_clustering = []
                     cluster.origin = j
                     cluster.word_counts = np.zeros(self.T)
 
@@ -101,14 +100,31 @@ class SharedBinMatching:
                 ac.map_assign()
                 for peak in ac.peaks:
                     best_poss = ac.Z[peak]
+                    try:
+                        cluster_mass = best_poss.cluster.mu_mass
+                    except AttributeError:
+                        x = np.array([poss.transformed_mass for peak, poss in best_poss.cluster.best_clustering])
+                        if len(x) > 0:
+                            cluster_mean = x.mean()
+                        else:
+                            cluster_mean = 0
+                    try:
+                        cluster_rt = best_poss.cluster.mu_mrt
+                    except AttributeError:
+                        x = np.array([peak.rt for peak, poss in cluster.best_clustering])
+                        if len(x) > 0:
+                            cluster_rt = x.mean()
+                        else:
+                            cluster_rt = 0
+
                     msg = "trans={:s},mu_mass={:3.5f},mu_rt={:.2f},members={:d},prob={:.4f}".format(
                                                                                 best_poss.transformation.name,
-                                                                                best_poss.cluster.mu_mass,
-                                                                                best_poss.cluster.mu_rt,
+                                                                                cluster_mass,
+                                                                                cluster_rt,
                                                                                 best_poss.cluster.N,
                                                                                 best_poss.prob)
                     self._annotate(peak, msg)
-                    best_poss.cluster.members.append((peak, best_poss))
+                    best_poss.cluster.best_clustering.append((peak, best_poss))
 
                 # keep track of the non-empty clusters
                 # if self.verbose:
@@ -116,10 +132,10 @@ class SharedBinMatching:
                 #     print "File %d clusters assignment " % j
                 selected = []
                 for cluster in file_clusters:
-                    if len(cluster.members) > 0:
+                    if len(cluster.best_clustering) > 0:
                         # if self.verbose:
                         #     print "Cluster ID %d" % cluster.id
-                        for peak, poss in cluster.members:
+                        for peak, poss in cluster.best_clustering:
                             # if self.verbose:
                             #     print "\tpeak_id %d mass %f rt %f intensity %f (%s %.3f)" % (peak.feature_id, peak.mass, peak.rt, peak.intensity,
                             #                                        poss.transformation.name, poss.prob)
@@ -151,7 +167,7 @@ class SharedBinMatching:
 
                 # initialise some attributes during runtime -- because we don't want to change adduct clusterer code ...
                 for cluster in file_clusters:
-                    cluster.members = []
+                    cluster.best_clustering = []
                     cluster.origin = j
                     cluster.word_counts = np.zeros(self.T)
 
@@ -159,14 +175,31 @@ class SharedBinMatching:
                 ac.map_assign()
                 for peak in ac.peaks:
                     best_poss = ac.Z[peak]
+                    try:
+                        cluster_mass = best_poss.cluster.mu_mass
+                    except AttributeError:
+                        x = np.array([poss.transformed_mass for peak, poss in best_poss.cluster.best_clustering])
+                        if len(x) > 0:
+                            cluster_mean = x.mean()
+                        else:
+                            cluster_mean = 0
+                    try:
+                        cluster_rt = best_poss.cluster.mu_mrt
+                    except AttributeError:
+                        x = np.array([peak.rt for peak, poss in cluster.best_clustering])
+                        if len(x) > 0:
+                            cluster_rt = x.mean()
+                        else:
+                            cluster_rt = 0
+
                     msg = "trans={:s},mu_mass={:3.5f},mu_rt={:.2f},members={:d},prob={:.4f}".format(
                                                                                 best_poss.transformation.name,
-                                                                                best_poss.cluster.mu_mass,
-                                                                                best_poss.cluster.mu_rt,
+                                                                                cluster_mass,
+                                                                                cluster_rt,
                                                                                 best_poss.cluster.N,
                                                                                 best_poss.prob)
                     self._annotate(peak, msg)
-                    best_poss.cluster.members.append((peak, best_poss))
+                    best_poss.cluster.best_clustering.append((peak, best_poss))
 
                 # keep track of the non-empty clusters
                 # if self.verbose:
@@ -174,10 +207,10 @@ class SharedBinMatching:
                 #     print "File %d clusters assignment " % j
                 selected = []
                 for cluster in file_clusters:
-                    if len(cluster.members) > 0:
+                    if len(cluster.best_clustering) > 0:
                         # if self.verbose:
                         #     print "Cluster ID %d" % cluster.id
-                        for peak, poss in cluster.members:
+                        for peak, poss in cluster.best_clustering:
                         #     if self.verbose:
                         #         print "\tpeak_id %d mass %f rt %f intensity %f (%s %.3f)" % (peak.feature_id, peak.mass, peak.rt, peak.intensity,
                         #                                            poss.transformation.name, poss.prob)
@@ -201,7 +234,7 @@ class SharedBinMatching:
 
         # for any matching mode, we should get the same alignment results back
         self.alignment_results = alignment_results
-                        
+
     def save_output(self, output_path):
 
         if output_path is None:
@@ -296,7 +329,7 @@ class SharedBinMatching:
             print "First stage clustering -- within_file_mass_tol=%.2f, within_file_rt_tol=%.2f, alpha=%.2f" % (self.hp.within_file_mass_tol, self.hp.within_file_rt_tol, self.hp.alpha_mass)
         sys.stdout.flush()
         clustering_results = Parallel(n_jobs=self.num_cores, verbose=10)(delayed(_run_first_stage_clustering)(
-                                        j, self.data_list[j], self.hp, self.transformation_file, self.mh_biggest, self.use_vb) for j in range(len(self.data_list)))
+                                        j, self.data_list[j], self.hp, self.transformation_file, self.mh_biggest) for j in range(len(self.data_list)))
         assert len(clustering_results) == len(self.data_list)
         return clustering_results
 
@@ -421,14 +454,35 @@ class SharedBinMatching:
             print "Matching precursor bins"
         sys.stdout.flush()
 
+        # check we aren't missing any features
+        input_features_count = 0
+        for j in range(len(self.data_list)):
+            features = self.data_list[j].features
+            input_features_count += len(features)
+
         alignment_files = []
         alignment_feature_to_precursor_cluster = {}
-
+        clustered_features_count = 0
         for j in range(len(self.data_list)):
 
             file_clusters = file_data[j]
-            file_post_masses = [cluster.mu_mass for cluster in file_clusters]
-            file_post_rts = [cluster.mu_rt for cluster in file_clusters]
+
+            # TODO: using posterior mass and rts
+            # print 'Using posterior mass and rts'
+            # file_post_masses = [cluster.mu_mass for cluster in file_clusters]
+            # file_post_rts = [cluster.mu_rt for cluster in file_clusters]
+
+            # just using hte average of all the members
+            file_post_masses = []
+            file_post_rts = []
+            for cluster in file_clusters:
+                assert len(cluster.best_clustering) > 0, 'Empty cluster detected!!'
+                avg_mass = np.array([poss.transformed_mass for peak, poss in cluster.best_clustering]).mean()
+                avg_rt = np.array([peak.rt for peak, poss in cluster.best_clustering]).mean()
+                file_post_masses.append(avg_mass)
+                file_post_rts.append(avg_rt)
+                clustered_features_count += len(cluster.best_clustering)
+
             file_post_fingerprints = [cluster.word_counts for cluster in file_clusters]
             this_file = AlignmentFile("file_" + str(j), self.verbose)
 
@@ -486,13 +540,17 @@ class SharedBinMatching:
             results.append(tup)
 
         # turn this into a matching of peak features
+        total_aligned_features = 0
         alignment_results = []
         for bin_res in results:
             matched_list = self._match_adduct_features(bin_res)
             for features in matched_list:
+                total_aligned_features += len(features)
                 res = AlignmentResults(peakset=features, prob=1.0)
                 alignment_results.append(res)
 
+        assert input_features_count == clustered_features_count
+        assert input_features_count == total_aligned_features
         return alignment_results
 
     def _second_stage_clustering(self, cluster_list):
@@ -639,17 +697,11 @@ class SharedBinMatching:
         return tmap, tidx
 
     def _match_adduct_features(self, group):
-        results = []
-        if len(group) == 1:
-            # just singleton things
-            elem = next(iter(group))
-            for f in elem.members:
-                peak_feature = f[0]
-                tup = (peak_feature, )
-                results.append(tup)
-        else:
-            # match by the adduct types only
-            results = self._simple_matching(group)
+        for cluster in group:
+            assert len(cluster.best_clustering) > 0, 'Empty cluster detected!!'
+            avg_mass = np.array([poss.transformed_mass for peak, poss in cluster.best_clustering]).mean()
+            avg_rt = np.array([peak.rt for peak, poss in cluster.best_clustering]).mean()
+        results = self._simple_matching(group)
         return results
 
     def _simple_matching(self, group):
@@ -657,7 +709,7 @@ class SharedBinMatching:
         # combine everything of the same type together
         adducts = {}
         for cluster in group:
-            for peak, poss in cluster.members:
+            for peak, poss in cluster.best_clustering:
                 trans_name = poss.transformation.name
                 if trans_name in adducts:
                     adducts[trans_name].append(peak)
@@ -669,4 +721,5 @@ class SharedBinMatching:
         for trans_name in adducts:
             tup = tuple(adducts[trans_name])
             results.append(tup)
+
         return results

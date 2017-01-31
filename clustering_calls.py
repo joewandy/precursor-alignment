@@ -1,7 +1,9 @@
-
 import operator
 import os
 import sys
+
+import cPickle
+import gzip
 import numpy as np
 
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
@@ -9,32 +11,48 @@ sys.path.insert(1, os.path.join(sys.path[0], '..'))
 from adduct_cluster import AdductCluster, Peak
 from second_stage_clusterer import DpMixtureGibbs
 
-def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest, use_vb):
+def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest):
 
     sys.stdout.flush()
-    ac = AdductCluster(mass_tol=hp.within_file_mass_tol, rt_tol=hp.within_file_rt_tol, 
-                       alpha=hp.alpha_mass, mh_biggest=mh_biggest, transformation_file=trans_filename, verbose=2)
-
     peak_list = peak_data.features
-    ac.init_from_list(peak_list)
+    corr_mat = peak_data.corr_mat
+    shape_clustering = True if corr_mat is not None else False
 
-    if use_vb:
-        ac.init_vb()
-        for n in range(hp.mass_clustering_n_iterations):
-            print "VB step %d file %d " % (n, j)
-            sys.stdout.flush()
-            ac.vb_step()
-    else:
-        ac.multi_sample(hp.mass_clustering_n_iterations)
-        ac.compute_posterior_probs()    
+    # ac = AdductCluster(mass_tol=hp.within_file_mass_tol, rt_tol=hp.within_file_rt_tol,
+    #                    alpha=hp.alpha_mass, mh_biggest=mh_biggest, transformation_file=trans_filename, verbose=2)
+    # ac.init_from_list(peak_list)
 
+    ac_dir = '/Users/joewandy/Dropbox/Analysis/precursor/multibeers/notebooks/pickles/acs/'
+    base_name, ext = os.path.splitext(peak_data.filename)
+    file_name = '%s_masstol_%d_rttol_%d_mhbiggest_%s_shape_%s.ac' % (base_name, hp.within_file_mass_tol,
+                                                                        hp.within_file_rt_tol, mh_biggest, shape_clustering)
+    file_path = os.path.join(ac_dir, file_name)
+    try:
+        with gzip.GzipFile(file_path, 'rb') as f:
+            ac = cPickle.load(f)
+            print "Loaded ac from %s" % file_path
+    except (TypeError, IOError, EOFError):
+        ac = AdductCluster(mass_tol=hp.within_file_mass_tol, rt_tol=hp.within_file_rt_tol,
+                           alpha=hp.alpha_mass, mh_biggest=mh_biggest, transformation_file=trans_filename, verbose=2,
+                           corr_mat=corr_mat)
+        ac.init_from_list(peak_list)
+        with gzip.GzipFile(file_path, 'wb') as f:
+            cPickle.dump(ac, f, protocol=cPickle.HIGHEST_PROTOCOL)
+        print "Saved to %s" % file_path
+
+    print 'Running Gibbs sampler on %s' % peak_data.filename
+    ac.alpha = hp.alpha_mass
+    ac.mass_tol = hp.within_file_mass_tol
+    ac.rt_tol = hp.within_file_rt_tol
+    ac.multi_sample(hp.mass_clustering_n_iterations)
+    ac.compute_posterior_probs()
     return ac
 
 def _run_second_stage_clustering(n, cluster_list, hp, seed, verbose=False):
-    
+
     if seed == -1:
         seed = 1234567890
-    
+
     masses = []
     rts = []
     word_counts = []
@@ -45,12 +63,12 @@ def _run_second_stage_clustering(n, cluster_list, hp, seed, verbose=False):
         word_counts.append(cluster.word_counts)
         origins.append(cluster.origin)
     data = (masses, rts, word_counts, origins)
-    
+
     # run dp clustering for each top id
     dp = DpMixtureGibbs(data, hp, seed=seed, verbose=verbose)
     dp.nsamps = hp.rt_clustering_nsamps
     dp.burn_in = hp.rt_clustering_burnin
-    dp.run() 
+    dp.run()
 
     # read the clustering results back
     matching_results = []
@@ -75,10 +93,10 @@ def _run_second_stage_clustering(n, cluster_list, hp, seed, verbose=False):
             output += "  mass = %.5f rt=%.3f\n" % (mass_list[i], rt_list[i])
             output += "  adducts = %s\n" % (adduct_list[i].tolist())
         output += "clustering results\n"
-        sorted_results = sorted(results.items(), key=operator.itemgetter(1), reverse=True)    
+        sorted_results = sorted(results.items(), key=operator.itemgetter(1), reverse=True)
         for key, value in sorted_results:
             output += "  %s = %d\n" % (key, value)
     print output
     sys.stdout.flush()
-    
+
     return matching_results

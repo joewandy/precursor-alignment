@@ -10,13 +10,13 @@ import utils
 
 class FileLoader:
 
-    def load_model_input(self, input_file, verbose=False):
+    def load_model_input(self, input_file, corr_rt_window, verbose=False):
         """ Load everything that a clustering model requires """
 
         # if this is a directory, process all files inside
         # input_file = os.path.abspath(input_file)
         # print os.path.isdir(input_file)
-        
+
         if os.path.isdir(input_file):
 
             print 'Loading files from', input_file
@@ -38,7 +38,7 @@ class FileLoader:
             all_features = []
             for file_path in filelist:
                 full_path = os.path.abspath(file_path)
-                features, corr_mat = self.load_features(full_path, file_id)
+                features, corr_mat = self.load_features(full_path, file_id, corr_rt_window)
                 file_id += 1
                 data = PeakData(features, file_path, corr_mat=corr_mat)
                 all_features.extend(features)
@@ -46,12 +46,12 @@ class FileLoader:
                 sys.stdout.flush()
             os.chdir(starting_dir)
             return data_list
-        
+
         else:
-            
+
             print input_file, 'must be a directory containing the input file'
 
-    def load_features(self, input_file, file_id, load_correlations=False):
+    def load_features(self, input_file, file_id, corr_rt_window):
 
         # first load the features
         features = []
@@ -64,13 +64,12 @@ class FileLoader:
 
         # also check if the correlation matrix is there, if yes load it too
         corr_mat = None
-        if load_correlations:
-            front_part, extension = os.path.splitext(input_file)
-            matfile = front_part + '.corr.mat'
-            if os.path.isfile(matfile):
-                print "Reading peak shape correlations from " + matfile
-                mdict = sio.loadmat(matfile)
-                corr_mat = mdict['corr_mat']
+        front_part, extension = os.path.splitext(input_file)
+        matfile = '%s_rtwindow_%d.corr.mat' % (front_part, corr_rt_window)
+        if os.path.isfile(matfile):
+            print "Reading peak shape correlations from " + matfile
+            mdict = sio.loadmat(matfile)
+            corr_mat = mdict['corr_mat']
 
         return features, corr_mat
 

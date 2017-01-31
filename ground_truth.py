@@ -11,7 +11,7 @@ import pylab as plt
 
 
 class GroundTruth:
-        
+
     def __init__(self, gt_file, file_list, file_peak_data, verbose=False):
 
         # map filename (without extension) to the file data
@@ -21,7 +21,7 @@ class GroundTruth:
             base = os.path.basename(file_list[j])
             front_part = os.path.splitext(base)[0]
             self.file_data[front_part] = file_peak_data[j]
-        
+
         # read ground truth
         self.gt_file = gt_file
         self.gt_lines = []
@@ -47,7 +47,7 @@ class GroundTruth:
                     for tok in tokens:
                         if state == 0:
                             base = os.path.basename(tok)
-                            front_part = os.path.splitext(base)[0]                            
+                            front_part = os.path.splitext(base)[0]
                             filenames.append(front_part)
                             state = 1 # go to next state
                         elif state == 1:
@@ -69,11 +69,11 @@ class GroundTruth:
                         if filenames[g] in self.file_data.keys():
                             f = self._find_features(filenames[g], masses[g], rts[g], intensities[g])
                             assert f is not None
-                            gt_entry.append(f)                            
+                            gt_entry.append(f)
                 else:
                     # handle better new ground truth format
                     print "Unsupported"
-                    
+
                 if len(gt_entry) > 1:
                     item = tuple(gt_entry)
                     self.gt_features.append(item)
@@ -82,12 +82,12 @@ class GroundTruth:
                         size_map[item_length] += 1
                     else:
                         size_map[item_length] = 1
-                    
+
         if verbose:
-            print "Loaded " + str(len(self.gt_features)) + " ground truth entries"   
+            print "Loaded " + str(len(self.gt_features)) + " ground truth entries"
             print size_map
             print
-                
+
     def evaluate_bins(self, file_bins, peak_feature_to_bin, results):
 
         # construct an all_bins x all_bins ground truth matrix
@@ -115,7 +115,7 @@ class GroundTruth:
         plt.figure()
         plt.pcolor(gt_mat)
         plt.show()
-        
+
         # turn results into a pairwise thing too
         for matched_bins in results:
             for bin1 in matched_bins:
@@ -128,27 +128,27 @@ class GroundTruth:
                         res_mat[i, j] = 1
         plt.figure()
         plt.pcolor(res_mat)
-        plt.show()    
-        
-    def evaluate_alignment_results_1(self, alignment_results, th_prob, annotations=None, 
-                                     feature_binning=None, verbose=False, print_TP=True):   
-                 
+        plt.show()
+
+    def evaluate_alignment_results_1(self, alignment_results, th_prob, annotations=None,
+                                     feature_binning=None, verbose=False, print_TP=True):
+
         tp = set() # should be matched and correctly matched
         fp = set() # should be matched but incorrectly matched
         fn = set() # should be matched but not matched at all
-        
+
         ground_truth = []
         for item in self.gt_features:
             feature_keys = frozenset([f._get_key() for f in item])
-            ground_truth.append(feature_keys)    
+            ground_truth.append(feature_keys)
 
         peaksets = []
         for item, prob in alignment_results:
             ps_keys = frozenset([f._get_key() for f in item])
             intersects = self._find_intersection(ps_keys, ground_truth)
             if len(intersects)>0: # only consider items that also appear in ground truth
-                peaksets.append(ps_keys)    
-                
+                peaksets.append(ps_keys)
+
         for i in range(len(ground_truth)):
             gt_item = ground_truth[i]
             if len(gt_item) == 1: # skip single entry ground truth?
@@ -182,26 +182,26 @@ class GroundTruth:
                         print "FP %d peakset = %s" % (i, self._get_annotated_string(ps, annotations))
                     print "FP %d groundtruth = %s" % (i, self._get_annotated_string(gt_item, annotations))
                     print "------------------------------------------------------------------------------------------"
-            
+
         tp_count = float(len(tp))
         fp_count = float(len(fp))
-        fn_count = float(len(fn))                        
+        fn_count = float(len(fn))
         try:
             prec = tp_count/(tp_count+fp_count)
             rec = tp_count/(tp_count+fn_count)
             f1 = (2*tp_count)/((2*tp_count)+fp_count+fn_count)
             return tp_count, fp_count, fn_count, prec, rec, f1, th_prob
         except ZeroDivisionError:
-            return tp, fp, fn, 0, 0, 0, th_prob        
+            return tp, fp, fn, 0, 0, 0, th_prob
 
-    def evaluate_alignment_results_2(self, alignment_results, th_prob, annotations=None, 
-                                     feature_binning=None, verbose=False, print_TP=True):   
-                 
+    def evaluate_alignment_results_2(self, alignment_results, th_prob, annotations=None,
+                                     feature_binning=None, verbose=False, print_TP=True):
+
         ground_truth = []
         all_ground_truth_features = set()
         for item in self.gt_features:
             feature_keys = [f._get_key() for f in item]
-            ground_truth.append(feature_keys)    
+            ground_truth.append(feature_keys)
             all_ground_truth_features.update(feature_keys)
 
         peaksets = []
@@ -214,16 +214,16 @@ class GroundTruth:
 
         g_plus = self._get_pairwise_peakset(ground_truth, whitelist=None)
         t = self._get_pairwise_peakset(peaksets, whitelist=all_ground_truth_features)
-        
+
         # TP = should be aligned & are aligned = G+ intersect t
         tp = g_plus.intersection(t)
-        
+
         # FN = should be aligned & aren't aligned = G+ \ t
         fn = g_plus - t
 
         # FP = shouldn't be aligned & are aligned = t \ G+
         fp = t - g_plus
-        
+
 #         print "TP"
 #         for item in tp:
 #             for key in item:
@@ -239,26 +239,26 @@ class GroundTruth:
 #             for key in item:
 #                 print feature_map[key],
 #             print
-                    
+
         tp_count = float(len(tp))
         fp_count = float(len(fp))
-        fn_count = float(len(fn))                        
+        fn_count = float(len(fn))
         try:
             prec = tp_count/(tp_count+fp_count)
             rec = tp_count/(tp_count+fn_count)
             f1 = (2*tp_count)/((2*tp_count)+fp_count+fn_count)
             return tp_count, fp_count, fn_count, prec, rec, f1, th_prob
         except ZeroDivisionError:
-            return tp_count, fp_count, fn_count, 0, 0, 0, th_prob        
+            return tp_count, fp_count, fn_count, 0, 0, 0, th_prob
 
-    def evaluate_alignment_results_3(self, alignment_results, th_prob, annotations=None, 
-                                     feature_binning=None, verbose=False, print_TP=True, q=2):   
-                 
+    def evaluate_alignment_results_3(self, alignment_results, th_prob, annotations=None,
+                                     feature_binning=None, verbose=False, print_TP=True, q=2):
+
         ground_truth = []
         all_ground_truth_features = set()
         for item in self.gt_features:
             feature_keys = [f._get_key() for f in item]
-            ground_truth.append(feature_keys)    
+            ground_truth.append(feature_keys)
             all_ground_truth_features.update(feature_keys)
 
         peaksets = []
@@ -271,29 +271,29 @@ class GroundTruth:
 
         g_plus = self._get_combination_peakset(ground_truth, whitelist=None, q=q)
         t = self._get_combination_peakset(peaksets, whitelist=all_ground_truth_features, q=q)
-        
+
         # TP = should be aligned & are aligned = G+ intersect t
         tp = g_plus.intersection(t)
-        
+
         # FN = should be aligned & aren't aligned = G+ \ t
         fn = g_plus - t
 
         # FP = shouldn't be aligned & are aligned = t \ G+
         fp = t - g_plus
-        
+
         tp_count = float(len(tp))
         fp_count = float(len(fp))
-        fn_count = float(len(fn))                        
+        fn_count = float(len(fn))
         try:
             prec = tp_count/(tp_count+fp_count)
             rec = tp_count/(tp_count+fn_count)
             f1 = (2*tp_count)/((2*tp_count)+fp_count+fn_count)
             return tp_count, fp_count, fn_count, prec, rec, f1, th_prob
         except ZeroDivisionError:
-            return tp_count, fp_count, fn_count, 0, 0, 0, th_prob        
+            return tp_count, fp_count, fn_count, 0, 0, 0, th_prob
 
     def _get_pairwise_peakset(self, peaksets, whitelist=None):
-        
+
         results = []
         for ps in peaksets:
             if len(ps) == 1:
@@ -307,9 +307,9 @@ class GroundTruth:
                             continue
                         else:
                             results.append((item1, item2))
-                            
-        if whitelist is not None:            
-            unique_res = []                            
+
+        if whitelist is not None:
+            unique_res = []
             for items in results:
                 if len(items) == 1:
                     if items[0] not in whitelist:
@@ -323,21 +323,21 @@ class GroundTruth:
                         unique_res.append((item1, item2))
             return set(unique_res)
         else:
-            return set(results)            
+            return set(results)
 
     def _get_combination_peakset(self, peaksets, whitelist=None, q=2):
-        
+
         results = []
         for ps in peaksets:
-            
+
             # get the q-size combinations
-            for combi in itertools.combinations(ps, q): 
+            for combi in itertools.combinations(ps, q):
 
                 # sort the combination
                 temp = list(combi)
                 temp.sort(key=operator.itemgetter(1))
                 temp = tuple(temp)
-                
+
                 # check if it should be included
                 found = False
                 if whitelist is not None:
@@ -346,10 +346,10 @@ class GroundTruth:
                             found = True
                             break
                     if found:
-                        results.append(temp)        
+                        results.append(temp)
                 else:
-                    results.append(temp)                            
-                    
+                    results.append(temp)
+
         return set(results)
 
     def _get_annotated_string(self, peakset, annotations):
@@ -368,21 +368,21 @@ class GroundTruth:
             if len(same_elements) > 0:
                 intersects.append(ps)
         return intersects
-                    
+
     def _find_features(self, filename, mass, rt, intensity):
         EPSILON = 0.0001;
         features = self.file_data[filename].features
         for f in features:
             if abs(f.mass - mass) < EPSILON and abs(f.rt - rt) < EPSILON and abs(f.intensity - intensity) < EPSILON:
                 return f
-                
-def main(argv):    
-                
+
+def main(argv):
+
     database_file = '/home/joewandy/git/metabolomics_tools/discretisation/database/std1_mols.csv'
     transformation_file = '/home/joewandy/git/metabolomics_tools/discretisation/mulsubs/mulsub2.txt'
     input_dir = './input/std1_csv_2'
     gt_file = '/home/joewandy/git/metabolomics_tools/alignment/input/std1_csv_2/ground_truth/std1.positive.dat'
     gt = GroundTruth(gt_file, database_file, transformation_file, input_dir)
-    
+
 if __name__ == "__main__":
    main(sys.argv[1:])
