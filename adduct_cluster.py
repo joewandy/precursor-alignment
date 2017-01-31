@@ -63,6 +63,45 @@ class Possible(object):
         self.transformed_mass = transformed_mass
         self.rt = rt
 
+class BetaLike(object):
+    def __init__(self,alp_in=10,bet_in=1,alp_out=1,bet_out=1,p0_in=0.01,p0_out=0.99):
+        self.alp_in = alp_in
+        self.bet_in = bet_in
+        self.alp_out = alp_out
+        self.bet_out = bet_out
+        self.p0_in = p0_in
+        self.p0_out = p0_out
+        self.log_p0_in = np.log(p0_in)
+        self.log_p0_out = np.log(p0_out)
+
+    def in_like(self,c):
+        l = np.log(1-self.log_p0_in)
+        l += (self.alp_in - 1)*np.log(c)
+        l += (self.bet_in - 1)*np.log(1-c)
+        return l
+
+
+    def out_like(self,c):
+        l = np.log(1-self.log_p0_out)
+        l += (self.alp_out - 1)*np.log(c)
+        l += (self.bet_out - 1)*np.log(1-c)
+        return l
+
+    def plot_like(self):
+        plt.figure()
+        xv = np.arange(0,1,0.01)
+        yin = beta.pdf(xv,self.alp_in,self.bet_in)
+        yout = beta.pdf(xv,self.alp_out,self.bet_out)
+        plt.plot(xv,yin)
+        plt.plot(xv,yout)
+
+    def __str__(self):
+        output = "Beta\n"
+        output += '- in_alpha=%.2f, in_beta=%.2f\n' % (self.alp_in, self.bet_in)
+        output += '- out_alpha=%.2f, out_beta=%.2f\n' % (self.alp_out, self.bet_out)
+        output += '- in_prob=%.2f, out_prob=%.2f\n' % (self.p0_in, self.p0_out)
+        return output
+
 class AdductCluster(object):
 
     def __init__(self, rt_tol = 10, mass_tol = 5, transformation_file = 'pos_transformations_full.yml', alpha = 1,
@@ -74,23 +113,19 @@ class AdductCluster(object):
         self.load_transformations()
         self.alpha = alpha
 
-        self.corr_mat = corr_mat
-        self.in_alpha = in_alpha
-        self.out_alpha = out_alpha
-        self.in_beta = in_beta
-        self.out_beta = out_beta
-        self.in_prob = in_prob
-        self.out_prob = out_prob
+        self.adjacency = corr_mat
+        self.like_object = BetaLike(alp_in=in_alpha, bet_in=in_beta,
+                                    alp_out=out_alpha, bet_out=out_beta,
+                                    p0_in=in_prob, p0_out=out_prob)
 
         self.verbose = verbose
-        self.nSamples = 0
+        self.samples_collected = 0
         self.mh_biggest = mh_biggest
 
     def load_transformations(self):
         self.transformations = transformation.load_from_file(self.transformation_file)
         self.MH = None
         for t in self.transformations:
-            print '- %s' % t.name
             if t.name=="M+H":
                 self.MH = t
 
@@ -131,6 +166,7 @@ class AdductCluster(object):
             self.possible[p] = [poss]
             self.Z[p] = poss
             self.clus_poss[c] = [poss]
+        self.N = len(self.peaks)
 
         if self.verbose:
             print "Created {} clusters".format(len(self.clusters))
@@ -166,10 +202,10 @@ class AdductCluster(object):
                 self.todo.append(p)
             self.peak_idx[p] = n
 
-        if self.corr_mat is not None:
-            n_peaks = self.corr_mat.shape[0]
+        if self.adjacency is not None:
+            n_peaks = len(self.adjacency)
             assert n_peaks == len(peak_list)
-            self.in_like, self.out_like = self._create_like_mats()
+            self.base_like()
 
         if self.verbose:
             print "{} peaks to be re-sampled in stage 1".format(len(self.todo))
@@ -178,12 +214,14 @@ class AdductCluster(object):
         for p in self.peaks:
             for poss in self.possible[p]:
                 poss.count = 0
-        self.nSamples = 0
+        self.samples_collected = 0
 
     def multi_sample(self, S):
 
+        burn_in = S/2 # half of the total samples are set to be the burn-in samples
+        self.samples_collected = 0
         for s in range(S):
-            self.do_gibbs_sample()
+            self.do_gibbs_sample(s, burn_in)
 
         # Fix the counts for things that don't get re-sampled
         for p in self.peaks:
@@ -192,38 +230,20 @@ class AdductCluster(object):
                 self.possible[p][0].cluster.mu_mass = p.mass
                 self.possible[p][0].cluster.mu_rt = p.rt
 
-    def _create_like_mats(self):
+        self.compute_posterior_probs(self.samples_collected)
 
-        print "Creating likelihood matrices for shape clustering"
-        n_peaks = (self.corr_mat.shape)[0]
-        in_like = np.zeros((n_peaks, n_peaks))
-        out_like = np.zeros((n_peaks, n_peaks))
-        todo_indices = set([self.peak_idx[x] for x in self.todo])
+    def base_like(self):
+        self.base_like = {}
 
-        for n in np.arange(n_peaks-1):
-            if n % 500 == 0:
-                print n
-            for m in np.arange(n+1, n_peaks):
-                if self.corr_mat[n,m] != 0:
-                    in_val = np.log(self.in_prob) + self._log_beta_pdf(self.corr_mat[n,m], self.in_alpha, self.in_beta)
-                    out_val = np.log(self.out_prob) + self._log_beta_pdf(self.corr_mat[n,m], self.out_alpha, self.out_beta)
-                else:
-                    in_val = np.log(1-self.in_prob)
-                    out_val = np.log(1-self.out_prob)
-                in_like[n][m] = in_val
-                in_like[m][n] = in_val
-                out_like[n][m] = out_val
-                out_like[m][n] = out_val
-        return in_like, out_like
+        for p in self.peaks:
+            like = self.N*self.like_object.log_p0_out
+            for q in self.adjacency[p]:
+                like -= self.like_object.log_p0_out
+                like += self.like_object.out_like(self.adjacency[p][q])
+            self.base_like[p] = like
 
-    def _log_beta_pdf(self, x, a, b):
-        o = gammaln(a + b) - gammaln(a) - gammaln(b)
-        o = o + (a-1)*np.log(x) + (b-1)*np.log(1-x)
-        return o
+    def do_gibbs_sample(self, s, burn_in):
 
-    def do_gibbs_sample(self):
-
-        base_like = self.out_like.sum(axis=0)
         for p in self.todo:
 
             # Remove from current cluster
@@ -248,17 +268,17 @@ class AdductCluster(object):
                     # mass likelihood
                     new_post += poss.cluster.compute_mass_like(poss.transformation.transform(p))
                     # rt likelihood
-                    new_post += poss.cluster.compute_rt_like(p.rt)
+                    # new_post += poss.cluster.compute_rt_like(p.rt)
                     # peak shape likelihood
-                    if self.corr_mat is not None:
-                        this_peak_idx = self.peak_idx[p]
-                        # excluding the current peak being sampled
-                        in_pos = np.array([self.peak_idx[x] for x in poss.cluster.members])
-                        if len(in_pos) > 0:
-                            peak_shape_log_like = base_like[this_peak_idx] - self.out_like[this_peak_idx, in_pos].sum()
-                            peak_shape_log_like += self.in_like[this_peak_idx, in_pos].sum()
-                        else:
-                            peak_shape_log_like = base_like[this_peak_idx]
+                    if self.adjacency is not None:
+                        peak_shape_log_like = self.base_like[p]
+                        for x in poss.cluster.members:
+                            if x in self.adjacency[p]:
+                                peak_shape_log_like += self.like_object.in_like(self.adjacency[p][x])
+                                peak_shape_log_like -= self.like_object.out_like(self.adjacency[p][x])
+                            else:
+                                peak_shape_log_like += self.like_object.log_p0_in
+                                peak_shape_log_like -= self.like_object.log_p0_out
                         new_post += peak_shape_log_like
 
                 post.append(new_post)
@@ -280,16 +300,23 @@ class AdductCluster(object):
             new_poss.cluster.mass_sum += new_poss.transformed_mass
             new_trans = new_poss.transformation.name
             new_poss.cluster.peak_trans.append(new_trans)
-            new_poss.count += 1
+            if s > burn_in:
+                new_poss.count += 1
 
-        self.nSamples += 1
-        if self.nSamples % 100 == 0:
-            print 'Sample %d' % self.nSamples
+        print_every_nth = 1
+        if s > burn_in:
+            self.samples_collected += 1
+            if s % print_every_nth == 0:
+                print 'Sample %d' % s
+        else:
+            if s % print_every_nth == 0:
+                print 'Burn-in %d' % s
 
-    def compute_posterior_probs(self):
+    def compute_posterior_probs(self, samples_collected):
+        print 'Collected %d samples after burn-in' % samples_collected
         for p in self.peaks:
             for poss in self.possible[p]:
-                poss.prob = (1.0*poss.count)/(1.0*self.nSamples)
+                poss.prob = (1.0*poss.count)/(1.0*samples_collected)
 
     def display_probs(self):
         # Only displays the ones in todo

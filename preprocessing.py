@@ -4,6 +4,7 @@ import os
 import sys
 
 import scipy.io as sio
+import scipy
 
 from models import PeakData, Feature, DatabaseEntry
 import utils
@@ -38,9 +39,9 @@ class FileLoader:
             all_features = []
             for file_path in filelist:
                 full_path = os.path.abspath(file_path)
-                features, corr_mat = self.load_features(full_path, file_id, corr_rt_window)
+                features, corr_adjacency = self.load_features(full_path, file_id, corr_rt_window)
                 file_id += 1
-                data = PeakData(features, file_path, corr_mat=corr_mat)
+                data = PeakData(features, file_path, corr_mat=corr_adjacency)
                 all_features.extend(features)
                 data_list.append(data)
                 sys.stdout.flush()
@@ -71,7 +72,20 @@ class FileLoader:
             mdict = sio.loadmat(matfile)
             corr_mat = mdict['corr_mat']
 
-        return features, corr_mat
+            adjacency = {}
+            for p in features:
+                adjacency[p] = {}
+
+            cx = scipy.sparse.coo_matrix(corr_mat)
+            for i,j,v in zip(cx.row, cx.col, cx.data):
+                if not i == j:
+                    if v==1:
+                        v = 0.99
+                    elif v==0:
+                        v = 0.01
+                    adjacency[features[i]][features[j]] = v
+
+        return features, adjacency
 
     def detect_delimiter(self, input_file):
         with open(input_file, 'rb') as csvfile:
