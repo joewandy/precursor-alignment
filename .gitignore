@@ -93,3 +93,6 @@ local.properties
 
 # Ignore checkpoints
 .ipynb_checkpoints
+
+# PyCharm
+.idea/
