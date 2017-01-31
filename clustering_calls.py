@@ -41,9 +41,25 @@ def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest):
         print "Saved to %s" % file_path
 
     print 'Running Gibbs sampler on %s' % peak_data.filename
+
     ac.alpha = hp.alpha_mass
     ac.mass_tol = hp.within_file_mass_tol
     ac.rt_tol = hp.within_file_rt_tol
+
+    # peak shape parameters
+    ac.in_alpha = 2.0
+    ac.in_beta = 1.0
+    ac.out_alpha = 1.0
+    ac.out_beta = 1.0
+    ac.in_prob = 0.25
+    ac.out_prob = 0.99
+
+    print '- concentration param=%.2f' % ac.alpha
+    print '- mass_tol=%.2f, rt_tol=%.2f' % (ac.mass_tol, ac.rt_tol)
+    print '- in_alpha=%.2f, in_beta=%.2f' % (ac.in_alpha, ac.in_alpha)
+    print '- out_alpha=%.2f, out_beta=%.2f' % (ac.out_alpha, ac.out_beta)
+    print '- in_prob=%.2f, out_prob=%.2f' % (ac.in_prob, ac.out_prob)
+
     ac.multi_sample(hp.mass_clustering_n_iterations)
     ac.compute_posterior_probs()
     return ac
