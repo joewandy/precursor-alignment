@@ -18,7 +18,7 @@ def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest):
     corr_mat = peak_data.corr_mat
     shape_clustering = True if corr_mat is not None else False
 
-    ac_dir = '/Users/joewandy/Dropbox/Analysis/precursor/multibeers/notebooks/pickles/acs/'
+    ac_dir = 'pickles/acs/'
     base_name, ext = os.path.splitext(peak_data.filename)
     file_name = '%s_masstol_%d_rttol_%d_mhbiggest_%s_shape_%s.ac' % (base_name, hp.within_file_mass_tol,
                                                                         hp.within_file_rt_tol, mh_biggest, shape_clustering)
@@ -38,10 +38,15 @@ def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest):
             cPickle.dump(ac, f, protocol=cPickle.HIGHEST_PROTOCOL)
         print "Saved to %s" % file_path
 
+    ac.alpha = hp.alpha_mass
+    ac.mass_tol = hp.within_file_mass_tol
+    ac.rt_tol = hp.within_file_rt_tol
+
     print 'Running Gibbs sampler on %s' % peak_data.filename
     print '- concentration param=%.2f' % ac.alpha
     print '- mass_tol=%.2f, rt_tol=%.2f' % (ac.mass_tol, ac.rt_tol)
     print ac.like_object
+
     ac.multi_sample(hp.mass_clustering_n_iterations)
     return ac
 
