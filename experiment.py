@@ -173,7 +173,7 @@ def run_experiment(match_mode, training_list, testing_list, param_list, filename
             print "Saved to %s" % filename
     return exp_results
 
-def load_or_create_filelist(filename, combined_list, n_iter, n_files):
+def load_or_create_filelist(filename, combined_list, n_iter, n_files, randomise=True):
     try:
         with gzip.GzipFile(filename, 'rb') as f:
             item_list = cPickle.load(f)
@@ -184,7 +184,10 @@ def load_or_create_filelist(filename, combined_list, n_iter, n_files):
     except (TypeError, IOError, EOFError):
         item_list = []
         for i in range(n_iter):
-            item = random.sample(combined_list, n_files)
+            if randomise:
+                item = random.sample(combined_list, n_files)
+            else:
+                item = combined_list[:n_files]
             print "%s" % [x[0].filename for x in item]
             item_list.append(item)
         if filename is not None:

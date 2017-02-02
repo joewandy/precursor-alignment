@@ -18,10 +18,6 @@ def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest):
     corr_mat = peak_data.corr_mat
     shape_clustering = True if corr_mat is not None else False
 
-    # ac = AdductCluster(mass_tol=hp.within_file_mass_tol, rt_tol=hp.within_file_rt_tol,
-    #                    alpha=hp.alpha_mass, mh_biggest=mh_biggest, transformation_file=trans_filename, verbose=2)
-    # ac.init_from_list(peak_list)
-
     ac_dir = '/Users/joewandy/Dropbox/Analysis/precursor/multibeers/notebooks/pickles/acs/'
     base_name, ext = os.path.splitext(peak_data.filename)
     file_name = '%s_masstol_%d_rttol_%d_mhbiggest_%s_shape_%s.ac' % (base_name, hp.within_file_mass_tol,
@@ -32,23 +28,20 @@ def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest):
             ac = cPickle.load(f)
             print "Loaded ac from %s" % file_path
     except (TypeError, IOError, EOFError):
+
         ac = AdductCluster(mass_tol=hp.within_file_mass_tol, rt_tol=hp.within_file_rt_tol,
                            alpha=hp.alpha_mass, mh_biggest=mh_biggest, transformation_file=trans_filename, verbose=2,
                            corr_mat=corr_mat)
         ac.init_from_list(peak_list)
+
         with gzip.GzipFile(file_path, 'wb') as f:
             cPickle.dump(ac, f, protocol=cPickle.HIGHEST_PROTOCOL)
         print "Saved to %s" % file_path
 
     print 'Running Gibbs sampler on %s' % peak_data.filename
-
-    ac.alpha = hp.alpha_mass
-    ac.mass_tol = hp.within_file_mass_tol
-    ac.rt_tol = hp.within_file_rt_tol
     print '- concentration param=%.2f' % ac.alpha
     print '- mass_tol=%.2f, rt_tol=%.2f' % (ac.mass_tol, ac.rt_tol)
     print ac.like_object
-
     ac.multi_sample(hp.mass_clustering_n_iterations)
     return ac
 

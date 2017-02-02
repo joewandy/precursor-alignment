@@ -226,7 +226,7 @@ class AdductCluster(object):
         # Fix the counts for things that don't get re-sampled
         for p in self.peaks:
             if p not in self.todo:
-                self.possible[p][0].count += S
+                self.possible[p][0].count += self.samples_collected
                 self.possible[p][0].cluster.mu_mass = p.mass
                 self.possible[p][0].cluster.mu_rt = p.rt
 
@@ -268,7 +268,7 @@ class AdductCluster(object):
                     # mass likelihood
                     new_post += poss.cluster.compute_mass_like(poss.transformation.transform(p))
                     # rt likelihood
-                    # new_post += poss.cluster.compute_rt_like(p.rt)
+                    new_post += poss.cluster.compute_rt_like(p.rt)
                     # peak shape likelihood
                     if self.adjacency is not None:
                         peak_shape_log_like = self.base_like[p]
@@ -300,11 +300,11 @@ class AdductCluster(object):
             new_poss.cluster.mass_sum += new_poss.transformed_mass
             new_trans = new_poss.transformation.name
             new_poss.cluster.peak_trans.append(new_trans)
-            if s > burn_in:
+            if s >= burn_in:
                 new_poss.count += 1
 
-        print_every_nth = 1
-        if s > burn_in:
+        print_every_nth = 100
+        if s >= burn_in:
             self.samples_collected += 1
             if s % print_every_nth == 0:
                 print 'Sample %d' % s
