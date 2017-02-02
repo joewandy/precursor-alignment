@@ -33,7 +33,7 @@ def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest):
                            alpha=hp.alpha_mass, mh_biggest=mh_biggest, transformation_file=trans_filename, verbose=2,
                            corr_mat=corr_mat)
         ac.init_from_list(peak_list)
-        # ac.multi_sample(hp.mass_clustering_n_iterations)
+        ac.multi_sample(hp.mass_clustering_n_iterations)
 
         with gzip.GzipFile(file_path, 'wb') as f:
             cPickle.dump(ac, f, protocol=cPickle.HIGHEST_PROTOCOL)
@@ -48,7 +48,7 @@ def _run_first_stage_clustering(j, peak_data, hp, trans_filename, mh_biggest):
     # print '- mass_tol=%.2f, rt_tol=%.2f' % (ac.mass_tol, ac.rt_tol)
     # print ac.like_object
 
-    ac.multi_sample(hp.mass_clustering_n_iterations)
+    # ac.multi_sample(hp.mass_clustering_n_iterations)
 
     return ac
 
